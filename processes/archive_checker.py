@@ -3,7 +3,6 @@
 import tkinter as tk
 import csv, json
 import pandas as pd
-import threading
 import asyncio
 import aiohttp
 
@@ -18,7 +17,9 @@ from functions.archive import (
     load_top_10_master_archive,
     load_honorable_mentions_archive
 )
+from functions.gui import browse_file_csv, get_api_key, task
 from functions.messages import inf
+from typing import override
 
 
 blocked_everywhere_indicator = "EVERYWHERE EXCEPT:"
@@ -28,30 +29,23 @@ class ArchiveStatusChecker(GUI):
         super().__init__()
         self.default_output_file = "outputs/status_checker_results.csv"
 
-        self.var_checker_target     = tk.StringVar()
+        self.var_checker_target     = tk.StringVar(value=CSVType.MASTER_ARCHIVE.value)
         self.var_output_file        = tk.StringVar(value=self.default_output_file)
         self.var_input_file_generic = tk.StringVar()
         self.var_use_local_archive  = tk.BooleanVar()
         self.var_check_titles       = tk.BooleanVar()
         self.var_async              = tk.BooleanVar(value=True)
 
-        self.reset_vars()
-    
-    def reset_vars(self):
         self.processed_rows = 0
         self.starting_row_num = 2
         self.ydl = None
         self.output_csv_path = ""
-        self.archive_records = []
+        self.archive_records = load_top_10_master_archive(self.var_use_local_archive.get())
+        self.num_to_fetch = len(self.archive_records)
         self.checking_range = []
         self.results: list[StatusRow] = []
 
-        self.var_checker_target.set(CSVType.MASTER_ARCHIVE.value)
-
     def gui(self, root):
-        self.archive_records = load_top_10_master_archive(self.var_use_local_archive.get())
-        self.num_to_fetch = len(self.archive_records)
-
         root.title("YouTube Video Status Checker")
 
         root.geometry("800x600")
@@ -61,30 +55,30 @@ class ArchiveStatusChecker(GUI):
         self.banner_image = ImageTk.PhotoImage(Image.open("images/archive-checker.png"))
 
         banner_label = tk.Label(root, image=self.banner_image, pady=5)
-        self.input_file_frame = tk.Frame(root)
-        output_file_frame = tk.Frame(root)
-        settings_frame = tk.LabelFrame(root, text="Settings")
+        self.frame_input_file = tk.Frame(root)
+        frame_output_file = tk.Frame(root)
+        frame_settings = tk.LabelFrame(root, text="Settings")
         frame_quit_run = tk.Frame(root)
         frame_info = tk.Frame(root)
         self.label_result = tk.Label(root, text="")
 
         banner_label.grid(column=0, row=0)
-        self.input_file_frame.grid(column=0, row=1)
-        output_file_frame.grid(column=0, row=2)
-        settings_frame.grid(column=0, row=3, pady=5)
+        self.frame_input_file.grid(column=0, row=1)
+        frame_output_file.grid(column=0, row=2)
+        frame_settings.grid(column=0, row=3, pady=5)
         frame_quit_run.grid(column=0, row=4, pady=(10, 5))
         frame_info.grid(column=0, row=5)
         self.label_result.grid(column=0, row=6, pady=8)
 
         # Output File Frame
-        output_file_label = tk.Label(output_file_frame, text="Output CSV file:")
+        output_file_label = tk.Label(frame_output_file, text="Output CSV file:")
 
         output_file_entry = tk.Entry(
-            output_file_frame, width=40, textvariable=self.var_output_file
+            frame_output_file, width=40, textvariable=self.var_output_file
         )
 
         browse_button = ttk.Button(
-            output_file_frame, text="📁 Choose...", command=self.browse_output_file
+            frame_output_file, text="📁 Choose...", command=browse_file_csv(self.var_output_file, True)
         )
 
         output_file_label.grid(column=0, row=0, padx=5)
@@ -92,24 +86,24 @@ class ArchiveStatusChecker(GUI):
         browse_button.grid(column=2, row=0, padx=5)
 
         # Settings Frame
-        csv_range_frame = tk.Frame(settings_frame)
+        csv_range_frame = tk.Frame(frame_settings)
 
         check_titles = tk.Checkbutton(
-            settings_frame,
+            frame_settings,
             text="Check Title Differences",
             variable=self.var_check_titles,
         )
 
         # Kept optional for debugging
         use_async = tk.Checkbutton(
-            settings_frame, text="Async Requests (faster)", variable=self.var_async
+            frame_settings, text="Async Requests (faster)", variable=self.var_async
         )
 
         use_local_archive = tk.Checkbutton(
-            settings_frame, text="Use Local Archive", variable=self.var_use_local_archive
+            frame_settings, text="Use Local Archive", variable=self.var_use_local_archive
         )
 
-        checker_subject_frame = tk.Frame(settings_frame)
+        checker_subject_frame = tk.Frame(frame_settings)
 
         csv_range_frame.grid(column=0, row=0, pady=4)
         check_titles.grid(column=0, row=1, padx=(35, 0), sticky="w")
@@ -121,13 +115,13 @@ class ArchiveStatusChecker(GUI):
         range_label = tk.Label(csv_range_frame, text="Range")
 
         self.entry_checks_row_start = tk.Entry(csv_range_frame, name="start", width=10)
-        self.entry_checks_row_start.bind("<Return>", self.clamp_to_archive_range)
-        self.entry_checks_row_start.bind("<FocusOut>", self.clamp_to_archive_range)
+        self.entry_checks_row_start.bind("<Return>", self.clamp_to_csv_range)
+        self.entry_checks_row_start.bind("<FocusOut>", self.clamp_to_csv_range)
         self.entry_checks_row_start.insert(0, 2)
 
         self.entry_checks_row_end = tk.Entry(csv_range_frame, name="end", width=10)
-        self.entry_checks_row_end.bind("<Return>", self.clamp_to_archive_range)
-        self.entry_checks_row_end.bind("<FocusOut>", self.clamp_to_archive_range)
+        self.entry_checks_row_end.bind("<Return>", self.clamp_to_csv_range)
+        self.entry_checks_row_end.bind("<FocusOut>", self.clamp_to_csv_range)
         self.entry_checks_row_end.insert(0, len(self.archive_records) + 1)
 
         range_label.pack(padx=(5, 5), side="left")
@@ -138,24 +132,24 @@ class ArchiveStatusChecker(GUI):
         self.radio_master_archive = tk.Radiobutton(
             checker_subject_frame,
             text="Master\nArchive",
-            value=CSVType.MASTER_ARCHIVE.value,
-            variable=self.var_checker_target,
-            command=self.checker_target_changed
+            value=CSVType.MASTER_ARCHIVE.value
         )
         self.radio_honorable_mentions = tk.Radiobutton(
             checker_subject_frame,
             text="Honorable\nMentions",
-            value=CSVType.HONORABLE_MENTIONS.value,
-            variable=self.var_checker_target,
-            command=self.checker_target_changed
+            value=CSVType.HONORABLE_MENTIONS.value
         )
         self.radio_generic_list = tk.Radiobutton(
             checker_subject_frame,
             text="Generic\nList",
-            value=CSVType.GENERIC_LIST.value,
-            variable=self.var_checker_target,
-            command=self.checker_target_changed
+            value=CSVType.GENERIC_LIST.value
         )
+
+        for btn in checker_subject_frame.winfo_children():
+            btn.config(
+                variable=self.var_checker_target,
+                command=self.checker_target_changed,
+            )
 
         self.radio_master_archive.pack(side="left")
         self.radio_honorable_mentions.pack(side="left")
@@ -165,13 +159,13 @@ class ArchiveStatusChecker(GUI):
         self.btn_start = ttk.Button(
             frame_quit_run,
             text="Run Status Checker",
-            command=self.run_status_checker,
+            command=lambda: self.run_status_checker(not self.var_async.get())
         )
 
         self.btn_quit = ttk.Button(
             frame_quit_run,
             text="Back to Main Menu",
-            command=self.quit
+            command=lambda: GUI.run("MainMenu")
         )
 
         self.btn_start.grid(column=0, row=0, padx=5, pady=5)
@@ -184,25 +178,27 @@ class ArchiveStatusChecker(GUI):
         )
         self.label_progress.grid(column=0, row=1, padx=3, pady=3)
 
+        self.ui_lock(self.task_running())
+
     def checker_target_changed(self):
         """Adjusts the ui to facilitate checking each kind of video list,
         honorable metions archive, or a generic video list csv"""
         target = CSVType(self.var_checker_target.get())
 
         if target is CSVType.GENERIC_LIST:
-            tk.Label(self.input_file_frame, text="Input CSV File:").grid(
+            tk.Label(self.frame_input_file, text="Input CSV File:").grid(
                 column=0, row=0, padx=5
             )
             tk.Entry(
-                self.input_file_frame,
+                self.frame_input_file,
                 width=40,
                 textvariable=self.var_input_file_generic,
                 state="readonly",
             ).grid(column=1, row=0, padx=5)
             ttk.Button(
-                self.input_file_frame, text="📁 Choose...", command=self.browse_input_file
+                self.frame_input_file, text="📁 Choose...", command=self.browse_input_file
             ).grid(column=2, row=0, padx=5)
-            self.input_file_frame.grid()
+            self.frame_input_file.grid()
 
             self.entry_checks_row_start.delete(0, tk.END)
             self.entry_checks_row_start.config(state="readonly")
@@ -211,9 +207,9 @@ class ArchiveStatusChecker(GUI):
             self.btn_start.config(state=tk.DISABLED)
             return self.label_progress.config(text="Progress: -/- videos checked")
         
-        for child in self.input_file_frame.winfo_children():
+        for child in self.frame_input_file.winfo_children():
             child.destroy()  # RIP childs again
-        self.input_file_frame.grid_remove()
+        self.frame_input_file.grid_remove()
 
         use_local = self.var_use_local_archive.get()
         self.archive_records = (
@@ -239,35 +235,20 @@ class ArchiveStatusChecker(GUI):
     def ui_lock(self, val: bool):
         state = tk.DISABLED if val else tk.NORMAL
 
-        self.entry_checks_row_start.config(state=state)
-        self.entry_checks_row_end.config(state=state)
-
-        self.radio_master_archive.config(state=state)
-        self.radio_honorable_mentions.config(state=state)
-        self.radio_generic_list.config(state=state)
-
-        self.btn_start.config(state=state)
-        self.btn_quit.config(state=state)
-
-    def browse_output_file(self):
-        """Handler for the "Choose Output CSV" button. Opens a file dialog and sets the
-        variable `var_output_file` to the selected file."""
-        file_path = (
-            filedialog.asksaveasfilename(filetypes=[("CSV Files", "*.csv")])
-            or self.default_output_file
-        )
-
-        if not file_path.endswith(".csv"):
-            file_path += ".csv"
-
-        self.var_output_file.set(file_path)
+        for widget in (
+            self.entry_checks_row_start,
+            self.entry_checks_row_end,
+            self.radio_master_archive,
+            self.radio_honorable_mentions,
+            self.radio_generic_list,
+            self.btn_start
+        ):
+            widget.config(state=state)
 
     def browse_input_file(self):
         """Handler for the "Choose Input CSV" button. Opens a file dialog and sets the
         variable `var_generic_csv_input` to the selected file."""
-        file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
-
-        self.var_input_file_generic.set(file_path)
+        file_path = browse_file_csv(self.var_input_file_generic)()
 
         if not file_path:
             self.entry_checks_row_start.delete(0, tk.END)
@@ -313,6 +294,9 @@ class ArchiveStatusChecker(GUI):
                 async with self.session.get(
                     f"https://www.googleapis.com/youtube/v3/videos?key={self.youtube_api_key}&id={video_id}&part=snippet,contentDetails,status"
                 ) as response:
+                    if response.status == 404:
+                        return None, set([VideoState.UNAVAILABLE]), []
+
                     response = json.loads(await response.text())
 
                 if not len(response.get("items", [])):
@@ -342,10 +326,7 @@ class ArchiveStatusChecker(GUI):
                 if len(blocked_countries) >= 5 or "allowed" in region_restriction or any(country in notable_countries for country in blocked_countries):
                     states.add(VideoState.BLOCKED)                
             
-            except Exception as e:
-                if e.resp.status == 404:
-                    return None, set([VideoState.UNAVAILABLE]), []
-                
+            except Exception:
                 return None, None, []
 
         elif "derpibooru.org" in video_url:
@@ -388,59 +369,17 @@ class ArchiveStatusChecker(GUI):
 
         return video_title, states, blocked_countries
 
-    def progress_loop(self):
-        """Update the progress label every few milliseconds from the main thread.
-        Writes the output data and unlocks the ui once all videos are checked"""
+    @override
+    def gui_update(self):
         self.label_progress.config(
             text=f"Progress: {self.processed_rows}/{self.num_to_fetch} videos checked"
         )
 
-        if self.processed_rows == self.num_to_fetch:
-            df = pd.DataFrame(self.results)
-            df = df[[ # Reordering
-                col for col in StatusRow.__annotations__.keys()
-                if col in df.columns
-            ]]
-            df.columns = [" ".join(name.split("_")).title() for name in df.columns]
-            df.to_csv(self.output_csv_path, index=False)
+        return self.processed_rows == self.num_to_fetch
 
-            self.label_result.config(text=f"Output CSV saved at: {self.output_csv_path}")
-
-            self.ui_lock(False)
-            return
-        
-        self.root.after(15, self.progress_loop)
-
-    # The starting point for the main part of this process
-    def run_status_checker(self):
-        """Check the status of the archive or generic list and output a csv
-        file of discrepancies or bad links respectively"""
-        self.youtube_api_key = GUI.get_api_key()
-        if not self.youtube_api_key: return
-
-        output_file_dir = self.var_output_file.get()
-        if not output_file_dir:
-            return
-
-        self.output_csv_path = output_file_dir
-
-        if "cookiefile" not in ydl_opts:
-            inf("Note: Couldn't find data/cookies.txt file. Some requests may yield no data.")
-
-        if self.ydl is None:
-            self.ydl = YoutubeDL(ydl_opts)
-
-        self.starting_row_num = int(self.entry_checks_row_start.get())
-        self.processed_rows = 0
-        self.check_titles = self.var_check_titles.get()
+    @override
+    def before(self):
         self.ui_lock(True)
-
-        # Run the video checking in a separate thread and start a loop that updates the ui based on its progress
-        threading.Thread(
-            target=lambda: asyncio.run(self.check_videos(not self.var_async.get()))
-        ).start()
-
-        self.progress_loop()
 
     async def archived_status_check(self, row_index: int, archive_record: ArchiveRecord):
         """Compare the current state of a video with its corresponding archive entry, and note
@@ -458,15 +397,9 @@ class ArchiveStatusChecker(GUI):
         )
 
         video_title = archive_record["title"]
-        video_url = archive_record.get("link", archive_record["alternate_link"])
+        video_url = archive_record.get("link") or archive_record["alternate_link"]
 
         fetched_video_title, video_states, blocked_countries = await self.get_video_status(video_url)
-
-        if video_states is None:
-            result["note"] = "Unexpected error on main url"
-            self.results.append(result)
-            self.processed_rows += 1
-            return
 
         result: StatusRow = {
             "row": row_index,
@@ -474,13 +407,19 @@ class ArchiveStatusChecker(GUI):
             "title": video_title,
         }
 
+        if video_states is None:
+            result["note"] = "Unexpected error on main url"
+            self.results.append(result)
+            self.processed_rows += 1
+            return
+
         if initial_states != video_states:
             result["prev_status"] = archive_record["state"]
             result["new_status"] = " & ".join(map(lambda state: state.value[0], video_states))
             result["blocked_countries"] = ", ".join(blocked_countries)
 
-        if self.check_titles:
-            result["new_title"] = fetched_video_title if video_title != fetched_video_title else ''
+        if self.check_titles and video_title != fetched_video_title:
+            result["new_title"] = fetched_video_title
 
         if len(video_states) and archive_record["alternate_link"]:
             alt_url = archive_record["alternate_link"]
@@ -524,7 +463,13 @@ class ArchiveStatusChecker(GUI):
 
         video_title, video_states, blocked_countries = await self.get_video_status(video_url)
 
-        if len(video_states):
+        if video_states is None:
+            self.results.append({
+                "row": row_index,
+                "url": video_url,
+                "note": "Unexpected error occured"
+            })
+        elif len(video_states):
             self.results.append({
                 "row": row_index,
                 "url": video_url,
@@ -535,7 +480,26 @@ class ArchiveStatusChecker(GUI):
 
         self.processed_rows += 1
 
-    async def check_videos(self, sequential):
+    @task
+    async def run_status_checker(self, sequential):
+        """Check the status of the archive or generic list and output a csv
+        file of discrepancies or bad links respectively"""
+        self.youtube_api_key = get_api_key()
+        self.output_csv_path = self.var_output_file.get()
+
+        if not self.youtube_api_key or not self.output_csv_path:
+            return True
+
+        if "cookiefile" not in ydl_opts:
+            inf("Note: Couldn't find data/cookies.txt file. Some requests may yield no data.")
+
+        if self.ydl is None:
+            self.ydl = YoutubeDL(ydl_opts)
+
+        self.starting_row_num = int(self.entry_checks_row_start.get())
+        self.processed_rows = 0
+        self.check_titles = self.var_check_titles.get()
+
         self.session = aiohttp.ClientSession()
 
         target = CSVType(self.var_checker_target.get())
@@ -566,13 +530,29 @@ class ArchiveStatusChecker(GUI):
 
         await self.session.close()
 
-    def clamp_to_archive_range(self, e: Event):
+        df = pd.DataFrame(self.results)
+        df = df[[ # Reordering
+            col for col in StatusRow.__annotations__.keys()
+            if col in df.columns
+        ]]
+        df.columns = [" ".join(name.split("_")).title() for name in df.columns]
+        df.to_csv(self.output_csv_path, index=False)
+
+        self.ydl.close()
+        self.ydl = None
+
+    @override
+    def finish(self):
+        self.label_result.config(text=f"Output CSV saved at: {self.output_csv_path}")
+        self.ui_lock(False)
+
+    def clamp_to_csv_range(self, e: Event):
         """Clamp values in the start and end entries to the range of the
         archive or generic list"""
         if self.entry_checks_row_start.cget("state") != tk.NORMAL:
             return
 
-        generic = self.var_checker_target.get()
+        generic = self.var_checker_target.get() == CSVType.GENERIC_LIST.value
         start = self.entry_checks_row_start.get()
         end = self.entry_checks_row_end.get()
 
@@ -629,11 +609,3 @@ class ArchiveStatusChecker(GUI):
         self.label_progress.config(
             text=f"Progress: 0/{self.num_to_fetch} videos checked"
         )
-    
-    def quit(self):
-        if self.ydl is not None:
-            self.ydl.close()
-        
-        self.reset_vars()
-
-        GUI.run("MainMenu")

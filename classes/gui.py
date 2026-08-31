@@ -1,5 +1,6 @@
-import tkinter as tk, dotenv, os
+import tkinter as tk, dotenv
 from PIL import Image, ImageTk
+from threading import Thread
 
 dotenv.load_dotenv()
 
@@ -19,25 +20,39 @@ class GUI:
     active_gui = None
 
     _key_image = None
-    _var_yt_api_key = None
     _frame_api_key = None
-    
+    _var_yt_api_key = tk.StringVar()
+
     # Allows guis to use other GUI instances by their class names
     # Otherwise would leave the circular imports issue with the main menu
     def __init__(self):
-        GUI.instances[self.__class__.__name__] = self
-
-        # ready should be used if a gui's background task tries modifying its widgets
-        # or when it takes a while for the widgets to load such as when waiting for web responses
-        self.ready = False
+        self.name = self.__class__.__name__
+        GUI.instances[self.name] = self
+        self.task: Thread | None = None
 
     # Named gui to be more intuitive when overriding rather than in its use in this class
     def gui(self, root: tk.Tk):
-        """Code to build the gui should override this method.
+        """Method for building the gui.
 
         NOTE: Some items like ImageTk.PhotoImage may be garbage collected when building the gui,
         so if anything appears to be missing, try saving them to self.
         """
+
+    def gui_update(self) -> bool:
+        """Method for updating the ui content every few milliseconds,
+        using values computed from `task()` which runs in a separate thread.
+
+        Returns `True` when the ui content should stop being updated until the
+        next time `task()` is run."""
+        return True
+
+    def before(self):
+        """Method for updating the ui just before starting a `task()`'s update loop
+        starts in a separate thread."""
+
+    def finish(self):
+        """Method for making a final ui render, normally after a `task()`'s gui update loop completes,
+        indicated by `gui_update()` returning `True`."""
 
     @staticmethod
     def _toggle_key_entry():
@@ -60,16 +75,12 @@ class GUI:
 
         # Decommission the current active GUI and destroy it.
         if GUI.active_gui:
-            GUI.active_gui.ready = False
-
             for widget in GUI.root.winfo_children():
                 widget.destroy()
 
         # Switch the active GUI to the new instance.
-        GUI.active_gui = GUI.instances[gui_name]
+        GUI.active_gui: GUI = GUI.instances[gui_name]
 
-        # Call the new GUI's interface builder and construct the requested GUI.
-        GUI.active_gui.ready = False
         GUI.active_gui.gui(GUI.root)
 
         # Add the YT API Key field toggle button.
@@ -77,7 +88,6 @@ class GUI:
             GUI._key_image = ImageTk.PhotoImage(
                 Image.open("images/key.png").resize((30, 30))
             )
-            GUI._var_yt_api_key = tk.StringVar()
 
         tk.Button(
             GUI.root,
@@ -87,21 +97,24 @@ class GUI:
             command=lambda: GUI._toggle_key_entry(),
         ).place(relx=0.95, rely=0.95, anchor="se")
 
-        # Ready the GUI.
-        GUI.active_gui.ready = True
-    
-    @staticmethod
-    def get_api_key() -> str | None:
-        """Get the Youtube API key from the key entry box or, if not present,
-        from the .env file. Failure to find a key results in a message box
-        prompting the user to input a key"""
+        def update_loop(gui: GUI):
+            # Stop ui content updates when the view changes
+            if gui.name != GUI.active_gui.name:
+                return
 
-        youtube_api_key = GUI._var_yt_api_key.get().strip()
+            completed = gui.gui_update()
 
-        if not youtube_api_key:
-            youtube_api_key = os.getenv("apikey", "").strip()
+            if completed:
+                gui.finish()
+            else:
+                GUI.root.after(15, update_loop, gui)
 
-        if not youtube_api_key or youtube_api_key == "YOUR_API_KEY":
-            tk.messagebox.showinfo("Error", "Please provide a Youtube API key.")
+        update_loop(GUI.active_gui)
 
-        return youtube_api_key
+    def task_running(self):
+        """Returns `True` if the main task for this GUI view is running"""
+        if self.task is not None and self.task.is_alive():
+            return True
+
+        self.task = None
+        return False

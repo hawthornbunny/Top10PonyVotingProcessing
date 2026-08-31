@@ -1,16 +1,18 @@
 """Top 10 Pony Video Squeezer 3000 (vote processing) application."""
 
-import csv, os, sys, traceback
+import csv, sys, traceback
 from datetime import datetime
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk
 from tkinter.font import Font
+from typing import override
 from PIL import ImageTk, Image
 from tktooltip import ToolTip
 from functions.general import load_text_data
 from functions.archive import load_top_10_master_archive
 from functions.config import load_config_json
+from functions.gui import browse_file_csv, get_api_key, task
 from functions.voting import (
     load_votes_csv,
     normalize_voting_data,
@@ -45,8 +47,6 @@ from functions.ballot_rules import (
 from functions.messages import suc, inf, err
 from functions.services import get_fetcher
 from functions.similarity import detect_cross_platform_uploads
-
-# from classes.ui import CSVEditor
 from classes.gui import GUI
 
 
@@ -99,7 +99,7 @@ class VoteProcessing(GUI):
         input_file_entry = ttk.Entry(csv_input_frame, textvariable=self.csv_entry_var)
 
         browse_button = ttk.Button(
-            csv_input_frame, text="📁 Choose...", command=self.browse_file_csv
+            csv_input_frame, text="📁 Choose...", command=browse_file_csv(self.csv_entry_var)
         )
 
         input_file_label.grid(column=0, row=0, padx=8, pady=(2, 8))
@@ -228,10 +228,10 @@ class VoteProcessing(GUI):
         buttons_frame = tk.Frame(main_frame)
         buttons_frame.pack()
 
-        run_button = ttk.Button(
-            buttons_frame, text="📜 Run Checks", command=self.run_checks
+        self.run_button = ttk.Button(
+            buttons_frame, text="📜 Run Checks", command=self.run_checks, state=tk.DISABLED if self.task_running() else tk.NORMAL
         )
-        run_button.grid(column=0, row=0, padx=5, pady=5)
+        self.run_button.grid(column=0, row=0, padx=5, pady=5)
 
         quit_button = ttk.Button(
             buttons_frame,
@@ -240,24 +240,21 @@ class VoteProcessing(GUI):
         )
         quit_button.grid(column=1, row=0, padx=5, pady=5)
 
-        # Editor main frame
-        # Currently hidden, may be removed in future
-        # csv_editor = CSVEditor(main_frame)
-        # csv_editor.pack()
+    @override
+    def before(self):
+        self.run_button.config(state=tk.DISABLED)
 
-    def browse_file_csv(self):
-        """Handler for the "Browse" button. Opens a file dialog and sets the global
-        variable `entry_var` to the selected file.
-        """
-        file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
-        self.csv_entry_var.set(file_path)
+    @override
+    def finish(self):
+        self.run_button.config(state=tk.NORMAL)
 
-    def run_checks(self):
+    @task
+    async def run_checks(self):
         """Handler for the "Run Checks" button. Reads in the selected CSV file, runs
         a battery of checks on the voting data, and outputs an annotated version of
         the CSV with problematic votes labeled.
         """
-        youtube_api_key = GUI.get_api_key()
+        youtube_api_key = get_api_key()
         if not youtube_api_key: return
 
         selected_csv_file = self.csv_entry_var.get()
@@ -522,9 +519,3 @@ class VoteProcessing(GUI):
         proc_complete_msg = "\n\n".join(proc_complete_msgs)
 
         tk.messagebox.showinfo("Processing Completed", proc_complete_msg)
-
-    # TODO: Do we still need this?
-    def delete_if_present(self, filepath):
-        """Delete the given file if it exists on the filesystem."""
-        if os.path.exists(filepath):
-            os.remove(filepath)

@@ -3,9 +3,11 @@
 import csv
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk
 from tkinter.font import Font
+from typing import override
 from PIL import ImageTk, Image
+from functions.gui import browse_file_csv, get_api_key, task
 from functions.post_processing import (
     generate_top10_archive_records,
     generate_hm_archive_records,
@@ -55,7 +57,7 @@ class PostProcessing(GUI):
         browse_button = ttk.Button(
             input_file_frame,
             text="📁 Choose Input CSV...",
-            command=self.browse_input_file,
+            command=browse_file_csv(self.input_file_var),
         )
 
         input_file_label.grid(column=0, row=0, padx=5, pady=5)
@@ -68,12 +70,13 @@ class PostProcessing(GUI):
         buttons_frame = tk.Frame(main_frame)
         buttons_frame.pack()
 
-        run_button = ttk.Button(
+        self.run_button = ttk.Button(
             buttons_frame,
             text="🏁 Run Post-processing",
             command=self.handle_post_processing,
+            state=tk.DISABLED if self.task_running() else tk.NORMAL
         )
-        run_button.grid(column=0, row=0, padx=5, pady=5)
+        self.run_button.grid(column=0, row=0, padx=5, pady=5)
 
         quit_button = ttk.Button(
             buttons_frame,
@@ -82,15 +85,18 @@ class PostProcessing(GUI):
         )
         quit_button.grid(column=1, row=0, padx=5, pady=5)
 
-    def browse_input_file(self):
-        """Handler for the "Choose Input CSV" button. Opens a file dialog and sets the
-        global variable `input_file_var` to the selected file."""
-        file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
-        self.input_file_var.set(file_path)
+    @override
+    def before(self):
+        self.run_button.config(state=tk.DISABLED)
 
-    def handle_post_processing(self):
+    @override
+    def finish(self):
+        self.run_button.config(state=tk.NORMAL)
+
+    @task
+    async def handle_post_processing(self):
         """Handler for the "Run post-processing" button."""
-        yt_api_key = GUI.get_api_key()
+        yt_api_key = get_api_key()
         if not yt_api_key: return
 
         input_file_str = self.input_file_var.get()
