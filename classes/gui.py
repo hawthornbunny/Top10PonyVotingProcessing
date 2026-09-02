@@ -40,19 +40,14 @@ class GUI:
 
     def gui_update(self) -> bool:
         """Method for updating the ui content every few milliseconds,
-        using values computed from `task()` which runs in a separate thread.
-
-        Returns `True` when the ui content should stop being updated until the
-        next time `task()` is run."""
-        return True
+        using values computed from `task()` which runs in a separate thread."""
 
     def before(self):
         """Method for updating the ui just before starting a `task()`'s update loop
         starts in a separate thread."""
 
     def finish(self):
-        """Method for making a final ui render, normally after a `task()`'s gui update loop completes,
-        indicated by `gui_update()` returning `True`."""
+        """Method for making a final ui render, ran after a task completes and the view hasn't changed."""
 
     @staticmethod
     def _toggle_key_entry():
@@ -97,19 +92,21 @@ class GUI:
             command=lambda: GUI._toggle_key_entry(),
         ).place(relx=0.95, rely=0.95, anchor="se")
 
-        def update_loop(gui: GUI):
-            # Stop ui content updates when the view changes
-            if gui.name != GUI.active_gui.name:
-                return
+        if GUI.active_gui.task_running():
+            GUI.active_gui._update_loop()
 
-            completed = gui.gui_update()
+    def _update_loop(self):
+        # Stop ui content updates when the view changes
+        if self.name != GUI.active_gui.name:
+            return
 
-            if completed:
-                gui.finish()
-            else:
-                GUI.root.after(15, update_loop, gui)
+        completed = not self.task_running()
+        self.gui_update()
 
-        update_loop(GUI.active_gui)
+        if completed:
+            self.finish()
+        else:
+            GUI.root.after(15, self._update_loop)
 
     def task_running(self):
         """Returns `True` if the main task for this GUI view is running"""

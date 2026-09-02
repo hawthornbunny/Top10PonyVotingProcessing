@@ -53,5 +53,6 @@ def task(async_func):
         )
 
         self.task.start()
+        self._update_loop()
 
     return threaded

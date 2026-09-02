@@ -107,21 +107,22 @@ def load_archive(archive_name: str) -> pd.DataFrame:
     local_path = archives[archive_name]["local"]
     archive_url = archives[archive_name]["url"]
 
+    # Some archives don't have their header on the first row, in which case they
+    # should specify a different header row.
+    header_idx = 0
+    try:
+        header_idx = archives[archive_name]["header_idx"]
+    except KeyError:
+        pass
+
     try:
         inf(f"Loading local copy of {archive_name} archive CSV...")
+        # locally saved archives have the header index at 0
         dataframe = pd.read_csv(local_path, header=0)
     except Exception:
-        # Some archives don't have their header on the first row, in which case they
-        # should specify a different header row.
-        header_idx = 0
-        try:
-            header_idx = archives[archive_name]["header_idx"]
-        except KeyError:
-            pass
-
         inf(f"Downloading a copy of the {archive_name} archive...")
         dataframe = pd.read_csv(archive_url, header=header_idx)
-        dataframe.to_csv(local_path)
+        dataframe.to_csv(local_path, index=False)
         suc(f"Local copy of {archive_name} archive saved to {local_path}.")
 
     return dataframe

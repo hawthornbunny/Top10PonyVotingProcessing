@@ -375,8 +375,6 @@ class ArchiveStatusChecker(GUI):
             text=f"Progress: {self.processed_rows}/{self.num_to_fetch} videos checked"
         )
 
-        return self.processed_rows == self.num_to_fetch
-
     @override
     def before(self):
         self.ui_lock(True)
