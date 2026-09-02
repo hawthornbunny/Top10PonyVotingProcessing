@@ -1,5 +1,6 @@
 from classes.exceptions import UnsupportedHostError
-from functions.manual_input import resolve
+from tkinter.simpledialog import askinteger, askstring
+from classes.typing import VideoData
 
 
 class Fetcher:
@@ -78,7 +79,7 @@ class Fetcher:
             if self._prompt_on_missing_data and not self.is_complete_video_data(
                 video_data
             ):
-                resolve(video_data)
+                self.resolve_missing(video_data, url)
                 self.save_to_cache(video_data, cache_key, url)
 
         else:
@@ -94,7 +95,7 @@ class Fetcher:
             if self._prompt_on_missing_data and not self.is_complete_video_data(
                 video_data
             ):
-                resolve(video_data)
+                self.resolve_missing(video_data, url)
 
             self.save_to_cache(video_data, cache_key, url)
 
@@ -107,6 +108,14 @@ class Fetcher:
             raise e
 
         return parsed_video_data
+
+    def resolve_missing(video_data: VideoData, url: str):
+        for key in ('title', 'uploader'):
+            if video_data[key] is None:
+                video_data[key] = askstring(None, prompt=f'{url}\nEnter {key}:')
+
+        if video_data['duration'] is None:
+            video_data['duration'] = askinteger(None, f'{url}\nEnter duration:', minvalue=0)
 
     def set_cache(self, cache):
         """Set the fetcher to use a cache object. Fetched video data will be

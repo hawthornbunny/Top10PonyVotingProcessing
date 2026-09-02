@@ -158,8 +158,18 @@ class DerpibooruFetchService:
 class YtDlpFetchService:
     """Fetch service which makes requests for video data via yt-dlp."""
 
+    class YDL(YoutubeDL):
+        # To keep normal usage with a context manager of a single instance of YoutubeDL,
+        # __exit__ is overridden with the exact same behavior except that it doesn't call close().
+        # so that the context manager can be used whenever yt-dlp is needed
+        def __exit__(self, *args):
+            self.restore_console_title()
+            self.to_console_title(progress_state=0)
+
     def __init__(self, accepted_domains: list[str]):
         self.accepted_domains = accepted_domains
+        self.ydl = YtDlpFetchService.YDL(ydl_opts)
+
         if "cookiefile" not in ydl_opts:
             inf("Note: Couldn't find data/cookies.txt file. Some requests may yield no data.")
 
@@ -177,7 +187,7 @@ class YtDlpFetchService:
         site = site[0] if len(site) == 2 else site[1]
 
         try:
-            with YoutubeDL(ydl_opts) as ydl:
+            with self.ydl as ydl:
                 response = ydl.extract_info(url, download=False)
 
                 if "entries" in response:

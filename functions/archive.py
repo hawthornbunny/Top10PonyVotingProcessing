@@ -101,7 +101,7 @@ def load_honorable_mentions_archive(local_first = True) -> list[ArchiveRecord]:
     return archive_records
 
 
-def load_archive(archive_name: str) -> DataFrame:
+def load_archive(archive_name: str) -> pd.DataFrame:
     """Load the named archive as a Pandas DataFrame."""
 
     local_path = archives[archive_name]["local"]
@@ -117,11 +117,12 @@ def load_archive(archive_name: str) -> DataFrame:
 
     try:
         inf(f"Loading local copy of {archive_name} archive CSV...")
-        dataframe = pd.read_csv(local_path, header=header_idx)
+        # locally saved archives have the header index at 0
+        dataframe = pd.read_csv(local_path, header=0)
     except Exception:
         inf(f"Downloading a copy of the {archive_name} archive...")
         dataframe = pd.read_csv(archive_url, header=header_idx)
-        dataframe.to_csv(local_path)
+        dataframe.to_csv(local_path, index=False)
         suc(f"Local copy of {archive_name} archive saved to {local_path}.")
 
     return dataframe

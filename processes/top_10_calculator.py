@@ -5,10 +5,12 @@ import csv
 from datetime import datetime
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk
 from tkinter.font import Font
 from tktooltip import ToolTip
+from typing import override
 from PIL import ImageTk, Image
+from functions.gui import browse_file_csv, get_api_key, task
 from functions.top_10_calc import (
     process_shifted_voting_data,
     get_titles_to_urls_mapping,
@@ -95,7 +97,7 @@ class Top10Calculator(GUI):
         browse_button = ttk.Button(
             file_selectors_frame,
             text="📁 Choose Input CSV...",
-            command=self.browse_input_file,
+            command=browse_file_csv(self.input_file_var),
         )
 
         input_file_label.grid(column=0, row=0, padx=5, pady=5)
@@ -115,7 +117,7 @@ class Top10Calculator(GUI):
         browse_button = ttk.Button(
             file_selectors_frame,
             text="📁 Choose Shifted Cells CSV...",
-            command=self.browse_shifted_file,
+            command=browse_file_csv(self.shifted_file_var),
         )
 
         shifted_file_label.grid(column=0, row=1, padx=5, pady=5)
@@ -161,10 +163,10 @@ class Top10Calculator(GUI):
         buttons_frame = tk.Frame(main_frame)
         buttons_frame.grid(row=4, column=0)
 
-        run_button = ttk.Button(
-            buttons_frame, text="🧮 Calculate Top 10", command=self.handle_calc
+        self.run_button = ttk.Button(
+            buttons_frame, text="🧮 Calculate Top 10", command=self.handle_calc, state=tk.DISABLED if self.task_running() else tk.NORMAL
         )
-        run_button.grid(column=0, row=0, padx=5, pady=5)
+        self.run_button.grid(column=0, row=0, padx=5, pady=5)
 
         quit_button = ttk.Button(
             buttons_frame,
@@ -173,21 +175,18 @@ class Top10Calculator(GUI):
         )
         quit_button.grid(column=1, row=0, padx=5, pady=5)
 
-    def browse_input_file(self):
-        """Handler for the "Choose Input CSV" button. Opens a file dialog and sets the
-        global variable `input_file_var` to the selected file."""
-        file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
-        self.input_file_var.set(file_path)
+    @override
+    def before(self):
+        self.run_button.config(state=tk.DISABLED)
 
-    def browse_shifted_file(self):
-        """Handler for the "Choose Shifted Cells CSV" button. Opens a file dialog and sets the
-        global variable `shifted_file_var` to the selected file."""
-        file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
-        self.shifted_file_var.set(file_path)
+    @override
+    def finish(self):
+        self.run_button.config(state=tk.NORMAL)
 
-    def handle_calc(self):
+    @task
+    async def handle_calc(self):
         """Handler for the "Calculate Top 10" button."""
-        youtube_api_key = GUI.get_api_key()
+        youtube_api_key = get_api_key()
         if not youtube_api_key:
             return
 
