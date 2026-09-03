@@ -40,7 +40,6 @@ from functions.ballot_rules import (
     check_fuzzy,
     check_platform,
     check_ballot_uploader_occurrences,
-    check_ballot_uploader_diversity,
 )
 from functions.messages import suc, inf, err
 from functions.services import get_fetcher
@@ -113,10 +112,6 @@ class VoteProcessing(GUI):
 
         # Create labels and tooltips for options frames
         ballot_check_layout = {
-            "uploader_diversity": {
-                "label": "Uploader Diversity Check",
-                "tooltip": "Annotate ballots that do not contain videos from enough different uploaders.",
-            },
             "blacklist": {
                 "label": "Blacklist Check",
                 "tooltip": "Annotate ballots that contain votes for videos from blacklisted uploaders.",
@@ -169,6 +164,7 @@ class VoteProcessing(GUI):
         self.ballot_check_vars = {
             key: tk.BooleanVar(value=True) for key in ballot_check_layout
         }
+
         ballot_check_checkboxes = {
             key: ttk.Checkbutton(
                 ballot_checks_frame,
@@ -440,10 +436,6 @@ class VoteProcessing(GUI):
         inf("Performing ballot checks...")
 
         do_check = lambda k: self.ballot_check_vars[k].get() == True
-
-        if do_check("uploader_diversity"):
-            inf("* Checking for ballot uploader diversity...")
-            check_ballot_uploader_diversity(ballots, videos)
 
         if do_check("blacklist"):
             inf("* Checking for votes for blacklisted videos...")
