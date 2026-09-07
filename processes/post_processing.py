@@ -47,7 +47,7 @@ class PostProcessing(GUI):
         input_file_frame = tk.Frame(main_frame)
         input_file_label = tk.Label(input_file_frame, text="Input CSV file:")
 
-        default_input_file = "outputs/calculated_top_10.csv"
+        default_input_file = "outputs/calculated_top_10-half-weighted.csv"
         self.input_file_var = tk.StringVar()
         self.input_file_var.set(default_input_file)
         input_file_entry = ttk.Entry(

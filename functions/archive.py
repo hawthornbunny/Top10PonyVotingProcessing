@@ -142,9 +142,15 @@ def convert_ancient_to_master_format(dataframe: pd.DataFrame) -> list[ArchiveRec
 
         upload_date = datetime.strptime(upload_date_ymd, "%Y-%m-%d")
 
+        # Ancient pony videos don't have a rank, but the master format requires
+        # it. Create a dummy rank that ensures ancient videos get placed at the
+        # end of the list when sorted.
+        rank = "9999" + upload_date_ymd
+
         record = ArchiveRecord(
             year = str(upload_date.year),
             month = str(upload_date.month),
+            rank = rank,
             link = row["Original link"],
             alternate_link = row["Current link"],
             title = row["title"],
