@@ -127,8 +127,10 @@ def test_convert_ancient_to_master_format():
     assert len(records) == 3
     assert records[0]["year"] == "2011"
     assert records[0]["month"] == "4"
+    assert records[0]["rank"] == "99992011-04-01"
     assert records[0]["title"] == "Ancient 1"
     assert records[1]["year"] == "2010"
+    assert records[1]["rank"] == "99992010-10-10"
     assert records[1]["link"] == "https://example.com/2"
     assert records[1]["upload_date"] == "2010-10-10"
     assert records[1]["state"] == "Deleted"
